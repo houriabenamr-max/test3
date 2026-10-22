@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Carte IAV Hassan II - Madinat Al Irfane</title>
+
+	<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+		integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+	<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+		integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+	<style>
+		html, body { height: 100%; margin: 0; }
+		#map { height: 100%; width: 100%; }
+	</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<script>
+	// 1. Carte centrée sur l'IAV Hassan II (Madinat Al Irfane, Rabat)
+	const IAV = [33.9716, -6.8545];
+	const map = L.map('map').setView(IAV, 16);
+
+	// 2. Fonds de carte (sans clé API)
+	const esriRues = L.tileLayer(
+		'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+		maxZoom: 19,
+		attribution: 'Tiles &copy; Esri'
+	}).addTo(map);
+
+	const esriSatellite = L.tileLayer(
+		'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+		maxZoom: 19,
+		attribution: 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics'
+	});
+
+	const topo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+		maxZoom: 17,
+		attribution: '&copy; OpenStreetMap contributors, SRTM | &copy; <a href="https://opentopomap.org">OpenTopoMap</a>'
+	});
+
+	// 3. Contrôle des couches
+	const controleCouches = L.control.layers(
+		{ 'Esri Rues': esriRues, 'Esri Satellite': esriSatellite, 'OpenTopoMap': topo },
+		{},
+		{ collapsed: false }
+	).addTo(map);
+
+	// 4. Marqueur IAV
+	L.marker(IAV).addTo(map)
+		.bindPopup('<b>IAV Hassan II</b><br>Madinat Al Irfane, Rabat');
+
+	// 5. Chargement du GeoJSON
+	fetch('terrain.geojson')
+		.then(response => {
+			if (!response.ok) throw new Error('Fichier introuvable : ' + response.status);
+			return response.json();
+		})
+		.then(data => {
+			const couche = L.geoJSON(data, {
+				style: {
+					color: '#e63946',
+					weight: 2,
+					fillColor: '#e63946',
+					fillOpacity: 0.3
+				},
+				pointToLayer: (feature, latlng) =>
+					L.circleMarker(latlng, { radius: 6, color: '#e63946', fillOpacity: 0.7 }),
+				onEachFeature: (feature, layer) => {
+					const props = feature.properties || {};
+					const contenu = Object.entries(props)
+						.map(([k, v]) => `<b>${k}</b> : ${v}`)
+						.join('<br>');
+					if (contenu) layer.bindPopup(contenu);
+				}
+			}).addTo(map);
+
+			controleCouches.addOverlay(couche, 'Terrain');
+			map.fitBounds(couche.getBounds());
+		})
+		.catch(err => {
+			console.error('Erreur GeoJSON :', err);
+			alert('GeoJSON non chargé : ' + err.message);
+		});
+</script>
+
+</body>
+</html>
