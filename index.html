@@ -20,11 +20,11 @@
 <div id="map"></div>
 
 <script>
-	// 1. Carte centrée sur l'IAV Hassan II (Madinat Al Irfane, Rabat)
+	// 1. Carte centrée sur l'IAV Hassan II
 	const IAV = [33.9716, -6.8545];
 	const map = L.map('map').setView(IAV, 16);
 
-	// 2. Fonds de carte (sans clé API)
+	// 2. Fonds de carte
 	const esriRues = L.tileLayer(
 		'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
 		maxZoom: 19,
@@ -53,38 +53,85 @@
 	L.marker(IAV).addTo(map)
 		.bindPopup('<b>IAV Hassan II</b><br>Madinat Al Irfane, Rabat');
 
-	// 5. Chargement du GeoJSON
-	fetch('terrain.geojson')
-		.then(response => {
-			if (!response.ok) throw new Error('Fichier introuvable : ' + response.status);
-			return response.json();
-		})
-		.then(data => {
-			const couche = L.geoJSON(data, {
-				style: {
-					color: '#e63946',
-					weight: 2,
-					fillColor: '#e63946',
-					fillOpacity: 0.3
-				},
-				pointToLayer: (feature, latlng) =>
-					L.circleMarker(latlng, { radius: 6, color: '#e63946', fillOpacity: 0.7 }),
-				onEachFeature: (feature, layer) => {
-					const props = feature.properties || {};
-					const contenu = Object.entries(props)
-						.map(([k, v]) => `<b>${k}</b> : ${v}`)
-						.join('<br>');
-					if (contenu) layer.bindPopup(contenu);
-				}
-			}).addTo(map);
+	// 5. Liste des couches GeoJSON : fichier, nom affiché, style
+	const couchesGeoJSON = [
+		{
+			fichier: 'terrain.geojson',
+			nom: 'Terrain',
+			style: { color: '#e63946', weight: 2, fillColor: '#e63946', fillOpacity: 0.25 }
+		},
+		{
+			fichier: 'grass.geojson',
+			nom: 'Espaces verts',
+			style: { color: '#2d6a4f', weight: 1, fillColor: '#52b788', fillOpacity: 0.6 }
+		},
+		{
+			fichier: 'roads.geojson',
+			nom: 'Routes',
+			style: { color: '#6c757d', weight: 3, opacity: 0.9 }
+		},
+		{
+			fichier: 'iav3D.geojson',
+			nom: 'Bâtiments IAV',
+			style: { color: '#1d3557', weight: 2, fillColor: '#457b9d', fillOpacity: 0.7 }
+		},
+		{
+			fichier: 'points_iav.geojson',
+			nom: 'Points IAV',
+			style: { color: '#ffffff', weight: 1, fillColor: '#f77f00', fillOpacity: 0.9 },
+			rayon: 6
+		}
+	];
 
-			controleCouches.addOverlay(couche, 'Terrain');
-			map.fitBounds(couche.getBounds());
-		})
-		.catch(err => {
-			console.error('Erreur GeoJSON :', err);
-			alert('GeoJSON non chargé : ' + err.message);
+	// 6. Fonction de chargement générique
+	function chargerCouche(cfg) {
+		return fetch(cfg.fichier)
+			.then(r => {
+				if (!r.ok) throw new Error(cfg.fichier + ' : erreur ' + r.status);
+				return r.json();
+			})
+			.then(data => {
+				const couche = L.geoJSON(data, {
+					style: () => cfg.style,
+					pointToLayer: (feature, latlng) =>
+						L.circleMarker(latlng, Object.assign({ radius: cfg.rayon || 6 }, cfg.style)),
+					onEachFeature: (feature, layer) => {
+						const props = feature.properties || {};
+						const contenu = Object.entries(props)
+							.map(([k, v]) => `<b>${k}</b> : ${v}`)
+							.join('<br>');
+						layer.bindPopup(`<b>${cfg.nom}</b><br>${contenu}`);
+					}
+				}).addTo(map);
+
+				controleCouches.addOverlay(couche, cfg.nom);
+				return couche;
+			});
+	}
+
+	// 7. Chargement de toutes les couches
+	Promise.allSettled(couchesGeoJSON.map(chargerCouche)).then(resultats => {
+		const erreurs = [];
+		const tous = L.featureGroup();
+
+		resultats.forEach((res, i) => {
+			if (res.status === 'fulfilled') {
+				tous.addLayer(res.value);
+			} else {
+				console.error(res.reason);
+				erreurs.push(couchesGeoJSON[i].fichier);
+			}
 		});
+
+		// Zoom sur l'ensemble des données chargées
+		if (tous.getLayers().length > 0 && tous.getBounds().isValid()) {
+			map.fitBounds(tous.getBounds());
+		}
+
+		if (erreurs.length > 0) {
+			alert('Fichiers non chargés : ' + erreurs.join(', '));
+		}
+	});
 </script>
 
 </body>
